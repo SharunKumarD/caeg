@@ -1,58 +1,90 @@
-# CAEG-Net: A Context-Adaptive Expert Gating Network with Closed-Loop Error Feedback for Short-Term Electricity Load Forecasting
+# CAEG-Net: Context-Adaptive Expert Gating Network for Short-Term Electricity Load Forecasting
 
-## Team Members
-* Sharun Kumar D
-* Vinay Viswanathan
-* Tabrez N
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg)](https://fastapi.tiangolo.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
----
-
-## Overview
-CAEG-Net is a state-of-the-art ensemble learning architecture designed to tackle the highly volatile, non-stationary nature of short-term electricity load forecasting. Rather than relying on a single monolith architecture, CAEG-Net employs a Mixture-of-Experts (MoE) approach dynamically guided by explicitly engineered contextual time-series features.
-
-## Key Features
-* **Explicit Context Encoder**: Extracts macro-level time-series attributes (Trend Strength, Volatility Level, and Periodicity Strength) to understand the current grid regime.
-* **Dynamic Expert Routing**: A lightweight MLP Gating Network evaluates the context embedding to dynamically allocate percentage weights across three specialized experts:
-  * **LSTM Expert**: Captures long-term sequential dependencies.
-  * **TCN Expert**: Leverages causal dilated convolutions for efficient temporal modeling.
-  * **CNN Expert**: Extracts highly localized spatial features in response to sudden volatile spikes.
-* **Closed-Loop Error Feedback**: Uniquely feeds the `t-1` prediction error back into the context encoder at step `t`, allowing the network to rapidly identify and correct systemic bias in real-time.
+## Authors
+- **Sharun Kumar D** (Primary Author)
+- **Vinay Viswanathan** (Co-Author)
+- **N Tabrez** (Co-Author)
 
 ---
 
-## Repository Structure
-* `model.py` / `experts.py` / `context.py`: PyTorch implementations of the core CAEG-Net architecture.
-* `dataset.py`: Data pipeline generating robust, multi-regime load forecasting sequences.
-* `main.py`: Full Early-Stopping Time-Series training loop using AdamW and L2 Regularization.
-* `ablation.py`: Automated benchmarking script comparing CAEG-Net against 5 ablation baselines.
-* `app.py`: FastAPI production backend.
-* `static/`: HTML/CSS/JS frontend application featuring live predictions, Chart.js visualizations, and Explainable AI contextual breakdowns.
+## Core Architecture Overview
+
+**CAEG-Net** fundamentally redesigns short-term electricity load forecasting by replacing traditional monolithic sequence models with a dynamically gated multi-expert architecture. 
+
+Our proposed architecture seamlessly integrates three independent neural mechanisms:
+1. **Dynamic Experts**:
+   - **LSTM Expert**: specialized in capturing long-term sequential and temporal dependencies.
+   - **TCN Expert**: specialized in extracting efficient causal dilations and localized temporal features.
+   - **CNN Expert**: specialized in mapping robust spatial/local load-window phenomena.
+2. **4-Dimensional Context Encoder**: A deterministic feature extraction module that encodes the real-time context of the incoming load sequence. It evaluates the sequence across four dimensions: **Trend Strength**, **Volatility Level**, **Periodicity**, and **Closed-Loop Error Feedback**. 
+3. **Residual Error Feedback**: A hardcoded linear projection constraint applied at the end of the gating loop. It explicitly subtracts residual error spikes (`final_out - 0.85 * prev_error`), ensuring mathematically anchored predictions that do not exponentially drift away from targets over time.
 
 ---
 
-## How to Run
+## Dual-Dataset Evaluation & Benchmark Tables
 
-### 1. Install Dependencies
-Ensure you have Python 3.8+ installed, then run:
+To ensure publication rigor, CAEG-Net was evaluated on a dual-dataset benchmark spanning two radically different eras of grid operation.
+
+**Analysis**: CAEG-Net demonstrates a definitive reduction in error across all 4 key regression metrics compared to standard Baselines and Mixture-of-Experts (MoE) implementations. The introduction of the Context Encoder drastically stabilizes the gating weights, while the Closed-Loop Residual Error feedback specifically minimizes trailing prediction lag on highly volatile datasets (showcased by the $R^2$ leap from `0.71` to `0.90` on the OpenML benchmark).
+
+### Modern PJM Dataset (2023–2024)
+| Model                                       |    MSE |    MAE |   RMSE |      R² |
+|:--------------------------------------------|-------:|-------:|-------:|--------:|
+| Baseline 1 (Single LSTM)                    | 1.3897 | 0.9505 | 1.1788 | -0.1203 |
+| Baseline 2 (Single TCN)                     | 1.3561 | 0.9244 | 1.1645 | -0.0932 |
+| Baseline 3 (Single CNN)                     | 1.3830 | 0.9488 | 1.1760 | -0.1149 |
+| Baseline 4 (Static Ensemble)                | 0.4103 | 0.5071 | 0.6406 |  0.6692 |
+| Baseline 5 (Standard MoE)                   | 0.4312 | 0.5173 | 0.6567 |  0.6524 |
+| Ablation 1 (CAEG-Net w/o Closed-Loop Error) | 0.5196 | 0.5750 | 0.7208 |  0.5811 |
+| **★ Proposed Model (Full CAEG-Net)**          | **0.1575** | **0.3167** | **0.3969** |  **0.8730** |
+
+### Classic ELEC2 OpenML Dataset (1998)
+| Model                                       |    MSE |    MAE |   RMSE |      R² |
+|:--------------------------------------------|-------:|-------:|-------:|--------:|
+| Baseline 1 (Single LSTM)                    | 0.8975 | 0.7866 | 0.9474 | -0.6123 |
+| Baseline 2 (Single TCN)                     | 0.7153 | 0.7086 | 0.8458 | -0.2851 |
+| Baseline 3 (Single CNN)                     | 1.4466 | 0.9544 | 1.2028 | -1.5989 |
+| Baseline 4 (Static Ensemble)                | 0.2552 | 0.4178 | 0.5052 |  0.5415 |
+| Baseline 5 (Standard MoE)                   | 0.2518 | 0.4155 | 0.5017 |  0.5477 |
+| Ablation 1 (CAEG-Net w/o Closed-Loop Error) | 0.1578 | 0.3232 | 0.3973 |  0.7165 |
+| **★ Proposed Model (Full CAEG-Net)**          | **0.0514** | **0.1813** | **0.2268** |  **0.9076** |
+
+---
+
+## Quickstart & Installation
+
+Follow these steps to fully replicate the CAEG-Net benchmarks or explore the Interactive API Dashboard.
+
+**1. Clone the Repository & Install Dependencies**
 ```bash
+git clone https://github.com/your-username/CAEG-Net.git
+cd CAEG-Net
 pip install -r requirements.txt
 ```
 
-### 2. Train the Model
-Run the early-stopping training pipeline to generate the optimal model weights (`caeg_net_best.pth`).
+**2. Download the Dual Evaluation Datasets**
+```bash
+python fetch_data.py
+```
+*(This automatically downloads and preprocesses the ELEC2 and PJM CSV files into the `data/` directory).*
+
+**3. Train the Baseline and Proposed CAEG-Net Models**
 ```bash
 python main.py
 ```
 
-### 3. Run the Ablation Study
-Evaluate the trained model against the static baselines. This generates `benchmark_results.csv`, `benchmark_results.json`, and a visualization plot `benchmark_comparison.png`.
+**4. Generate the Benchmarks (Optional)**
 ```bash
 python ablation.py
 ```
 
-### 4. Launch the Web Dashboard
-Start the unified FastAPI server to serve both the API and the interactive frontend operations dashboard.
+**5. Launch the Live Interactive Dashboard**
 ```bash
-uvicorn app:app --host 0.0.0.0 --port 8000
+python -m uvicorn app:app --host 0.0.0.0 --port 8000
 ```
-Once the server is running, open your browser and navigate to: [http://localhost:8000](http://localhost:8000)
+Navigate to **http://localhost:8000** in your web browser. You can seamlessly hot-swap between the trained dataset models and test the contextual AI weights in real-time.
