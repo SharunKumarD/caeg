@@ -1,0 +1,65 @@
+[
+    {
+        "Model":"Baseline 1 (Single LSTM)",
+        "MAE":0.4946010411,
+        "RMSE":0.6086553335,
+        "MAPE (%)":567.6462402344,
+        "R2":0.3344695568,
+        "Parameters":51992,
+        "Latency (ms)":3.0489161109
+    },
+    {
+        "Model":"Baseline 2 (Single TCN)",
+        "MAE":0.6314535141,
+        "RMSE":0.765958488,
+        "MAPE (%)":713.4145507812,
+        "R2":-0.0539876223,
+        "Parameters":20248,
+        "Latency (ms)":1.6351362252
+    },
+    {
+        "Model":"Baseline 3 (Single CNN)",
+        "MAE":0.858833611,
+        "RMSE":1.0985097885,
+        "MAPE (%)":609.8526611328,
+        "R2":-1.1678681374,
+        "Parameters":28056,
+        "Latency (ms)":0.8017241529
+    },
+    {
+        "Model":"Baseline 4 (Static Ensemble)",
+        "MAE":0.4009222984,
+        "RMSE":0.4868629873,
+        "MAPE (%)":304.6239013672,
+        "R2":0.5741677284,
+        "Parameters":100296,
+        "Latency (ms)":5.0814792164
+    },
+    {
+        "Model":"Baseline 5 (Standard MoE)",
+        "MAE":0.3950499892,
+        "RMSE":0.4772043824,
+        "MAPE (%)":312.6934509277,
+        "R2":0.5908958316,
+        "Parameters":111307,
+        "Latency (ms)":4.1167439549
+    },
+    {
+        "Model":"Ablation 1 (CAEG-Net w\/o Closed-Loop Error)",
+        "MAE":0.3360621035,
+        "RMSE":0.4156191647,
+        "MAPE (%)":411.8204040527,
+        "R2":0.6896754503,
+        "Parameters":102387,
+        "Latency (ms)":4.6182903675
+    },
+    {
+        "Model":"Proposed Model (Full CAEG-Net)",
+        "MAE":0.1877333522,
+        "RMSE":0.2332945615,
+        "MAPE (%)":232.4434051514,
+        "R2":0.9022235274,
+        "Parameters":102387,
+        "Latency (ms)":5.2712492257
+    }
+]
