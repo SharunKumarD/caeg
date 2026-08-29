@@ -6,9 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Authors
-- **Sharun Kumar D** (Primary Author)
-- **Vinay Viswanathan** (Co-Author)
-- **N Tabrez** (Co-Author)
+**Authors (Equal Contribution):** Sharun Kumar D, Vinay Viswanathan, N Tabrez
 
 ---
 
@@ -88,3 +86,7 @@ python ablation.py
 python -m uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 Navigate to **http://localhost:8000** in your web browser. You can seamlessly hot-swap between the trained dataset models and test the contextual AI weights in real-time.
+
+### Model Diagnostics & Validation
+The dual-dataset convergence plot below illustrates the robustness of the proposed CAEG-Net. On the classic ELEC2 dataset, the model exhibits smooth, textbook convergence. On the highly volatile Modern PJM dataset, the closed-loop feedback mechanism successfully stabilizes the validation loss, proving the architecture resists overfitting and underfitting even on chaotic, real-world grid data.
+![CAEG-Net Convergence](caegnet_convergence.jpg)
