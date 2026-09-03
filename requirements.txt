@@ -2,8 +2,5 @@ torch
 numpy
 pandas
 scikit-learn
-fastapi
-uvicorn
 matplotlib
-tabulate
-requests
+streamlit>=1.31.0

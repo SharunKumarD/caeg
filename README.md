@@ -28,7 +28,6 @@ Our proposed architecture seamlessly integrates three independent neural mechani
 
 To ensure publication rigor, CAEG-Net was evaluated on a dual-dataset benchmark spanning two radically different eras of grid operation.
 
-**Analysis**: CAEG-Net demonstrates a definitive reduction in error across all 4 key regression metrics compared to standard Baselines and Mixture-of-Experts (MoE) implementations. The introduction of the Context Encoder drastically stabilizes the gating weights, while the Closed-Loop Residual Error feedback specifically minimizes trailing prediction lag on highly volatile datasets (showcased by the $R^2$ leap from `0.71` to `0.90` on the OpenML benchmark).
 
 ### Modern PJM Dataset (2023–2024)
 | Model                                       |    MSE |    MAE |   RMSE |      R² |
@@ -41,7 +40,6 @@ To ensure publication rigor, CAEG-Net was evaluated on a dual-dataset benchmark 
 | Ablation 1 (CAEG-Net w/o Closed-Loop Error) | 0.5196 | 0.5750 | 0.7208 |  0.5811 |
 | **★ Proposed Model (Full CAEG-Net)**          | **0.1575** | **0.3167** | **0.3969** |  **0.8730** |
 
-### Classic ELEC2 OpenML Dataset (1998)
 | Model                                       |    MSE |    MAE |   RMSE |      R² |
 |:--------------------------------------------|-------:|-------:|-------:|--------:|
 | Baseline 1 (Single LSTM)                    | 0.8975 | 0.7866 | 0.9474 | -0.6123 |
@@ -69,7 +67,6 @@ pip install -r requirements.txt
 ```bash
 python fetch_data.py
 ```
-*(This automatically downloads and preprocesses the ELEC2 and PJM CSV files into the `data/` directory).*
 
 **3. Train the Baseline and Proposed CAEG-Net Models**
 ```bash
@@ -88,5 +85,4 @@ python -m uvicorn app:app --host 0.0.0.0 --port 8000
 Navigate to **http://localhost:8000** in your web browser. You can seamlessly hot-swap between the trained dataset models and test the contextual AI weights in real-time.
 
 ### Model Diagnostics & Validation
-The dual-dataset convergence plot below illustrates the robustness of the proposed CAEG-Net. On the classic ELEC2 dataset, the model exhibits smooth, textbook convergence. On the highly volatile Modern PJM dataset, the closed-loop feedback mechanism successfully stabilizes the validation loss, proving the architecture resists overfitting and underfitting even on chaotic, real-world grid data.
 ![CAEG-Net Convergence](caegnet_convergence.jpg)

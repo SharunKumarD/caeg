@@ -1,230 +1,165 @@
-import math
+import streamlit as st
 import torch
+import torch.nn as nn
 import numpy as np
-from typing import List, Optional, Dict, Any
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-import uvicorn
+import pandas as pd
+import matplotlib.pyplot as plt
+import os
+from pathlib import Path
 
-# Import CAEGNet modules from the package
+# CAEG-Net imports
 from model import CAEGNet
+from dataset import load_real_data
 from metrics import evaluate_all
 
-app = FastAPI(title="CAEG-Net API", description="Electricity Load Forecasting Backend")
+# Page configuration
+st.set_page_config(page_title="CAEG-Net — PJM Electricity Load Forecasting", layout="wide")
 
-# 1. Enable CORS for local frontend testing
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+st.title("CAEG-Net")
+st.subheader("Context-Adaptive Expert Gating Network for Short-Term Electricity Load Forecasting")
+st.markdown("**Dataset:** Modern PJM")
 
-# Global model instance
-model = None
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+seq_len = 168
+pred_len = 24
+csv_path = Path("data") / "dataset_modern.csv"
+checkpoint_path = Path("checkpoints") / "caeg_net_modern_best.pth"
 
-import os
-
-models = {}
-
-@app.on_event("startup")
-async def startup_event():
-    print(f"Starting up... Loading CAEG-Net models on {device}")
-    
-    datasets = {
-        "ELEC2": "caeg_net_elec2_best.pth",
-        "Modern": "caeg_net_modern_best.pth"
-    }
-    
-    for ds_name, weight_path in datasets.items():
-        m = CAEGNet(input_dim=1, seq_len=168, pred_len=24).to(device)
-        if os.path.exists(weight_path):
-            print(f"Found trained weights for {ds_name} at {weight_path}. Loading...")
-            m.load_state_dict(torch.load(weight_path, map_location=device))
-        else:
-            print(f"No trained weights found for {ds_name}. Using initialized weights.")
-        m.eval()
-        models[ds_name] = m
-        
-    print("Models loaded successfully.")
-
-# 2. Pydantic Models for Request/Response
-class PredictRequest(BaseModel):
-    dataset_type: str = "ELEC2"
-    historical_load: Optional[List[float]] = None
-    calendar_features: Optional[List[List[float]]] = None
-    previous_prediction_error: Optional[List[float]] = None
-    scenario: Optional[str] = None # Helper to auto-generate specific scenarios
-
-class PredictResponse(BaseModel):
-    forecast_24h: List[float]
-    actual_next_24h: Optional[List[float]]
-    gating_weights: Dict[str, float]
-    context_features: Dict[str, float]
-    expert_predictions: Dict[str, List[float]]
-    metrics: Optional[Dict[str, float]]
-    benchmark_table: Optional[List[Dict[str, Any]]]
-
-# Helper function to generate synthetic data if payload is empty
-def generate_synthetic_data(scenario: str, seq_len: int = 168, pred_len: int = 24):
-    total_len = seq_len + pred_len
-    time = np.arange(total_len)
-    
-    # Base pattern: Daily + Weekly
-    load = 100 * np.sin(2 * np.pi * time / 24) + 50 * np.sin(2 * np.pi * time / (24*7)) + 300
-    
-    if scenario == "Weekday Peak Load":
-        load += 50 * np.sin(2 * np.pi * time / 24) # Amplify daily peak
-    elif scenario == "Weekend Off-Peak":
-        load -= 100 # Lower overall load
-    elif scenario == "Extreme Weather / Volatile Spike":
-        # Add a massive spike in the last 24 hours of history
-        spike_start = seq_len - 24
-        load[spike_start:seq_len] += 200 * np.random.rand(24)
-    elif scenario == "Holiday Cycle":
-        load = 80 * np.sin(2 * np.pi * time / 24) + 250 # Flatter curve
-        
-    # Add random noise
-    load += np.random.normal(0, 10, total_len)
-    
-    # Standardize (approximate)
-    mean, std = np.mean(load), np.std(load)
-    load_scaled = (load - mean) / (std + 1e-8)
-    
-    history = load_scaled[:seq_len].tolist()
-    future_actual = load_scaled[seq_len:].tolist()
-    
-    return history, future_actual
-
-@app.post("/predict", response_model=PredictResponse)
-async def predict(req: PredictRequest):
-    seq_len = 168
-    pred_len = 24
-    
-    # Select dynamic model
-    ds_type = req.dataset_type if req.dataset_type in models else "ELEC2"
-    active_model = models[ds_type]
-    
-    # 3. Handle empty/partial payload (auto-sample)
-    actual_next = None
-    if not req.historical_load or len(req.historical_load) != seq_len:
-        scenario = req.scenario if req.scenario else "Weekday Peak Load"
-        hist, actual_next = generate_synthetic_data(scenario, seq_len, pred_len)
+@st.cache_resource
+def load_model():
+    model = CAEGNet(input_dim=1, seq_len=seq_len, pred_len=pred_len).to(device)
+    if os.path.exists(checkpoint_path):
+        model.load_state_dict(torch.load(checkpoint_path, map_location=device))
     else:
-        hist = req.historical_load
+        st.error(f"Checkpoint not found at {checkpoint_path}")
+    model.eval()
+    return model
+
+@st.cache_data
+def load_and_prepare_data():
+    if not os.path.exists(csv_path):
+        st.error(f"Dataset not found at {csv_path}")
+        return None, None, None
+        
+    X_load, X_cal, Y_load, scaler = load_real_data(csv_path=str(csv_path), seq_len=seq_len, pred_len=pred_len, train_ratio=0.8)
     
-    if req.previous_prediction_error and len(req.previous_prediction_error) == pred_len:
-        prev_error = req.previous_prediction_error
-    else:
-        prev_error = [0.0] * pred_len
+    total_samples = len(X_load)
+    train_size = int(0.8 * total_samples)
+    
+    X_test_load = X_load[train_size:]
+    Y_test_load = Y_load[train_size:]
+    
+    return X_test_load, Y_test_load, scaler
 
-    # Prepare tensors
-    x_load = torch.tensor(hist, dtype=torch.float32).unsqueeze(0).unsqueeze(-1).to(device)
-    x_err = torch.tensor(prev_error, dtype=torch.float32).unsqueeze(0).to(device)
-
-    # 4. Inference execution
+@st.cache_data
+def run_full_inference(_model, X_test, Y_test):
+    _model.eval()
+    preds_list, w_list, ctx_list = [], [], []
+    num_samples = len(X_test)
+    
     with torch.no_grad():
-        out_lstm = active_model.expert_lstm(x_load)
-        out_tcn = active_model.expert_tcn(x_load)
-        out_cnn = active_model.expert_cnn(x_load)
+        x = X_test.to(device)
+        y = Y_test.to(device)
+        prev_err = torch.zeros(1, pred_len).to(device)
         
-        context_emb = active_model.context_encoder(x_load, x_err)
-        weights = active_model.gating_network(context_emb)
+        for i in range(num_samples):
+            pred, w_i, ctx_i = _model(x[i:i+1], prev_err, return_context=True)
+            preds_list.append(pred.cpu())
+            w_list.append(w_i.cpu())
+            ctx_list.append(ctx_i.cpu())
+            prev_err = (pred - y[i:i+1]).detach()
+            
+        preds = torch.cat(preds_list, dim=0)
+        w = torch.cat(w_list, dim=0)
+        ctx = torch.cat(ctx_list, dim=0)
         
-        # We also need to apply the correct residual feedback logic
-        final_out, _ = active_model(x_load, x_err)
+    return preds, w, ctx
+
+# Application layout
+st.markdown("### About CAEG-Net")
+st.markdown("""
+- **LSTM Expert:** Captures long-term sequential dependencies.
+- **TCN Expert:** Extracts multi-scale temporal patterns.
+- **CNN Expert:** Identifies local anomalies and sudden spikes.
+- **Context Encoder:** Evaluates current trend, volatility, and periodicity.
+- **Dynamic Expert Gating:** Intelligently combines expert predictions based on context.
+- **Closed-Loop Error Feedback:** Feeds previous prediction errors back into the context to correct trajectory drifts.
+""")
+
+st.markdown("---")
+st.markdown("### PJM Load Forecasting")
+
+model = load_model()
+X_test, Y_test, scaler = load_and_prepare_data()
+
+if X_test is not None and model is not None:
+    # Run full sequential inference once and cache it
+    preds, w, ctx = run_full_inference(model, X_test, Y_test)
+    
+    # Calculate total metrics
+    st.markdown("### Global Model Performance (Test Set)")
+    metrics = evaluate_all(preds, Y_test)
+    cols = st.columns(4)
+    cols[0].metric("MSE", f"{metrics['MSE']:.4f}")
+    cols[1].metric("MAE", f"{metrics['MAE']:.4f}")
+    cols[2].metric("RMSE", f"{metrics['RMSE']:.4f}")
+    cols[3].metric("R²", f"{metrics['R2']:.4f}")
+    
+    st.markdown("---")
+    st.markdown("### Prediction Explorer")
+    
+    sample_idx = st.slider("Select Test Sample Index", 0, len(X_test) - 1, 0)
+    
+    if st.button("Predict Load"):
+        actual = Y_test[sample_idx].numpy().flatten()
+        prediction = preds[sample_idx].numpy().flatten()
         
-    # Extract Context Features manually for the API response
-    trend_val = (x_load[0, -1, 0] - x_load[0, 0, 0]).item()
-    vol_val = x_load[0, :, 0].std().item()
-    
-    lag = min(24, seq_len // 2)
-    part1 = x_load[0, lag:, 0].unsqueeze(0)
-    part2 = x_load[0, :-lag, 0].unsqueeze(0)
-    periodicity_val = torch.cosine_similarity(part1, part2, dim=1).item()
-    
-    recent_err_val = x_err[0].abs().mean().item()
+        # Inverse transform to original scale
+        actual_unscaled = scaler.inverse_transform(actual.reshape(-1, 1)).flatten()
+        pred_unscaled = scaler.inverse_transform(prediction.reshape(-1, 1)).flatten()
+        
+        st.success(f"Generated 24-hour prediction for sample {sample_idx}.")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### Actual vs Predicted")
+            fig, ax = plt.subplots(figsize=(8, 4))
+            ax.plot(actual_unscaled, label="Actual Load", marker='o')
+            ax.plot(pred_unscaled, label="Predicted Load", marker='x')
+            ax.set_title("24-Hour Load Forecast")
+            ax.set_xlabel("Hour")
+            ax.set_ylabel("Load (MW)")
+            ax.legend()
+            st.pyplot(fig)
+            
+        with col2:
+            st.markdown("#### Dynamic Expert Gating Weights")
+            weights = w[sample_idx].numpy().flatten()
+            fig2, ax2 = plt.subplots(figsize=(8, 4))
+            experts = ["LSTM", "TCN", "CNN"]
+            ax2.bar(experts, weights, color=['#1f77b4', '#ff7f0e', '#2ca02c'])
+            ax2.set_title("Expert Contributions")
+            ax2.set_ylabel("Weight")
+            ax2.set_ylim(0, 1)
+            st.pyplot(fig2)
+            
+        st.markdown("#### Context Features & Closed-Loop Feedback")
+        context_vals = ctx[sample_idx].numpy().flatten()
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Trend Strength", f"{context_vals[0]:.4f}")
+        c2.metric("Volatility Level", f"{context_vals[1]:.4f}")
+        c3.metric("Periodicity", f"{context_vals[2]:.4f}")
+        
+        # For error feedback, the model uses `prev_err` in its forward pass.
+        # We can calculate the mean of the absolute previous error used.
+        if sample_idx == 0:
+            prev_err_mae = 0.0
+        else:
+            prev_err_unscaled = scaler.inverse_transform( (preds[sample_idx-1] - Y_test[sample_idx-1]).numpy().reshape(-1,1) )
+            prev_err_mae = np.mean(np.abs(prev_err_unscaled))
+            
+        c4.metric("Closed-Loop Feedback (Prev MAE)", f"{prev_err_mae:.2f} MW")
 
-    # Calculate metrics if ground truth is available (auto-generated)
-    metrics_res = None
-    if actual_next is not None:
-        y_true = torch.tensor(actual_next, dtype=torch.float32).unsqueeze(0).to(device)
-        metrics_res = evaluate_all(final_out, y_true)
-
-    # 4.5 Load Benchmark Results
-    import pandas as pd
-    benchmark_data = []
-    csv_file = f"benchmark_results_{ds_type.lower()}.csv"
-    if ds_type == "Modern":
-        csv_file = "benchmark_results_modern.csv"
-    
-    if os.path.exists(csv_file):
-        df = pd.read_csv(csv_file)
-        benchmark_data = df.to_dict(orient="records")
-
-    # 5. Construct JSON response
-    response = PredictResponse(
-        forecast_24h=final_out[0].tolist(),
-        actual_next_24h=actual_next,
-        gating_weights={
-            "LSTM": float(weights[0, 0]),
-            "TCN": float(weights[0, 1]),
-            "CNN": float(weights[0, 2])
-        },
-        context_features={
-            "trend_strength": trend_val,
-            "volatility_level": vol_val,
-            "periodicity_strength": periodicity_val,
-            "recent_error": recent_err_val
-        },
-        expert_predictions={
-            "LSTM": out_lstm[0].tolist(),
-            "TCN": out_tcn[0].tolist(),
-            "CNN": out_cnn[0].tolist()
-        },
-        metrics=metrics_res,
-        benchmark_table=benchmark_data
-    )
-    
-    return response
-
-@app.get("/sample-scenarios")
-async def get_sample_scenarios():
-    """
-    Returns predefined test scenarios so the frontend can easily switch contexts 
-    and visualize how the gating network shifts expert weights.
-    """
-    return {
-        "scenarios": [
-            {
-                "id": "weekday_peak",
-                "name": "Weekday Peak Load",
-                "description": "High baseline with strong daily periodicity. Expect LSTM/TCN to dominate."
-            },
-            {
-                "id": "weekend_offpeak",
-                "name": "Weekend Off-Peak",
-                "description": "Lower baseline, stable pattern."
-            },
-            {
-                "id": "extreme_weather",
-                "name": "Extreme Weather / Volatile Spike",
-                "description": "High volatility and a sudden spike at the end. Expect CNN to activate for local feature extraction."
-            },
-            {
-                "id": "holiday_cycle",
-                "name": "Holiday Cycle",
-                "description": "Flatter curve with disrupted normal periodicity."
-            }
-        ]
-    }
-
-# Mount static frontend files
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
-
-if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+else:
+    st.warning("Could not load data or model. Please check the repository paths.")
