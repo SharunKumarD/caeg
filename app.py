@@ -51,7 +51,6 @@ def load_and_prepare_data():
     
     return X_test_load, Y_test_load, scaler
 
-@st.cache_data
 def run_full_inference(_model, X_test, Y_test):
     _model.eval()
     preds_list, w_list, ctx_list = [], [], []
