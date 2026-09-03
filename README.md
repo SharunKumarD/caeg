@@ -1,5 +1,8 @@
 # CAEG-Net: Context-Adaptive Expert Gating Network for Short-Term Electricity Load Forecasting
+## Authors
+**Authors (Equal Contribution):** Sharun Kumar D, Vinay Viswanathan, N Tabrez
 
+---
 ## 1. Project Title
 CAEG-Net: Context-Adaptive Expert Gating Network for Short-Term Electricity Load Forecasting
 
