@@ -13,11 +13,26 @@ from dataset import load_real_data
 from metrics import evaluate_all
 
 # Page configuration
-st.set_page_config(page_title="CAEG-Net — PJM Electricity Load Forecasting", layout="wide")
+st.set_page_config(page_title="CAEG-Net — PJM Load Forecasting", layout="wide", initial_sidebar_state="expanded")
 
+# ================= SIDEBAR =================
+with st.sidebar:
+    st.markdown("### CAEG-Net")
+    st.markdown("**Context-Adaptive Expert Gating Network**")
+    st.markdown("---")
+    st.markdown("**Dataset:** Modern PJM")
+    st.markdown("**Input Window:** 168 hours")
+    st.markdown("**Forecast Horizon:** 24 hours")
+    st.markdown("**Model:** CAEG-Net")
+    st.markdown("**Experts:** LSTM / TCN / CNN")
+    st.markdown("---")
+    st.caption("College ML Project Demonstration")
+
+# ================= MAIN HERO =================
 st.title("CAEG-Net")
 st.subheader("Context-Adaptive Expert Gating Network for Short-Term Electricity Load Forecasting")
-st.markdown("**Dataset:** Modern PJM")
+st.markdown("A deep learning architecture that intelligently routes multi-scale temporal data to specialized experts (LSTM, TCN, CNN) based on current context (Trend, Volatility, Periodicity) and closed-loop prediction errors.")
+st.markdown("---")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 seq_len = 168
@@ -71,6 +86,7 @@ def run_full_inference(_model, X_test, Y_test):
             periodicity = torch.cosine_similarity(x[i:i+1, lag:, 0], x[i:i+1, :-lag, 0], dim=1, eps=1e-8).unsqueeze(-1)
             recent_error = torch.tanh(prev_err.abs().mean(dim=1, keepdim=True))
             ctx_i = torch.cat([trend, volatility, periodicity, recent_error], dim=1)
+            
             preds_list.append(pred.cpu())
             w_list.append(w_i.cpu())
             ctx_list.append(ctx_i.cpu())
@@ -82,42 +98,41 @@ def run_full_inference(_model, X_test, Y_test):
         
     return preds, w, ctx
 
-# Application layout
-st.markdown("### About CAEG-Net")
-st.markdown("""
-- **LSTM Expert:** Captures long-term sequential dependencies.
-- **TCN Expert:** Extracts multi-scale temporal patterns.
-- **CNN Expert:** Identifies local anomalies and sudden spikes.
-- **Context Encoder:** Evaluates current trend, volatility, and periodicity.
-- **Dynamic Expert Gating:** Intelligently combines expert predictions based on context.
-- **Closed-Loop Error Feedback:** Feeds previous prediction errors back into the context to correct trajectory drifts.
-""")
-
-st.markdown("---")
-st.markdown("### PJM Load Forecasting")
-
 model = load_model()
 X_test, Y_test, scaler = load_and_prepare_data()
 
 if X_test is not None and model is not None:
-    # Run full sequential inference once and cache it
-    preds, w, ctx = run_full_inference(model, X_test, Y_test)
-    
-    # Calculate total metrics
-    st.markdown("### Global Model Performance (Test Set)")
+    # ================= PERFORMANCE OPTIMIZATION =================
+    # Cache inference in session state to prevent CPU throttling
+    if "inference_done" not in st.session_state:
+        with st.spinner("Initializing sequential closed-loop inference..."):
+            preds, w, ctx = run_full_inference(model, X_test, Y_test)
+            st.session_state["preds"] = preds
+            st.session_state["w"] = w
+            st.session_state["ctx"] = ctx
+            st.session_state["inference_done"] = True
+    else:
+        preds = st.session_state["preds"]
+        w = st.session_state["w"]
+        ctx = st.session_state["ctx"]
+        
+    # ================= MODEL PERFORMANCE =================
+    st.markdown("### Model Performance (Test Set)")
     metrics = evaluate_all(preds, Y_test)
-    cols = st.columns(4)
-    cols[0].metric("MSE", f"{metrics['MSE']:.4f}")
-    cols[1].metric("MAE", f"{metrics['MAE']:.4f}")
-    cols[2].metric("RMSE", f"{metrics['RMSE']:.4f}")
-    cols[3].metric("R²", f"{metrics['R2']:.4f}")
+    mc1, mc2, mc3, mc4 = st.columns(4)
+    mc1.metric("MSE", f"{metrics['MSE']:.4f}")
+    mc2.metric("MAE", f"{metrics['MAE']:.4f}")
+    mc3.metric("RMSE", f"{metrics['RMSE']:.4f}")
+    mc4.metric("R²", f"{metrics['R2']:.4f}")
     
     st.markdown("---")
+    
+    # ================= PREDICTION EXPLORER =================
     st.markdown("### Prediction Explorer")
     
     sample_idx = st.slider("Select Test Sample Index", 0, len(X_test) - 1, 0)
     
-    if st.button("Predict Load"):
+    if st.button("Generate 24-Hour Forecast", type="primary"):
         actual = Y_test[sample_idx].numpy().flatten()
         prediction = preds[sample_idx].numpy().flatten()
         
@@ -125,48 +140,86 @@ if X_test is not None and model is not None:
         actual_unscaled = scaler.inverse_transform(actual.reshape(-1, 1)).flatten()
         pred_unscaled = scaler.inverse_transform(prediction.reshape(-1, 1)).flatten()
         
-        st.success(f"Generated 24-hour prediction for sample {sample_idx}.")
+        # ================= FORECAST SUMMARY =================
+        st.markdown("#### Forecast Summary")
+        s1, s2, s3 = st.columns(3)
+        s1.metric("Peak Predicted Load", f"{pred_unscaled.max():.2f} MW", f"Hour {pred_unscaled.argmax()}")
+        s2.metric("Minimum Predicted Load", f"{pred_unscaled.min():.2f} MW", f"Hour {pred_unscaled.argmin()}")
+        s3.metric("Average Predicted Load", f"{pred_unscaled.mean():.2f} MW")
         
-        col1, col2 = st.columns(2)
+        # ================= VISUALIZATIONS =================
+        col_plot, col_gating = st.columns([2, 1])
         
-        with col1:
+        with col_plot:
             st.markdown("#### Actual vs Predicted")
-            fig, ax = plt.subplots(figsize=(8, 4))
-            ax.plot(actual_unscaled, label="Actual Load", marker='o')
-            ax.plot(pred_unscaled, label="Predicted Load", marker='x')
-            ax.set_title("24-Hour Load Forecast")
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.plot(actual_unscaled, label="Actual Load", marker='o', linewidth=2)
+            ax.plot(pred_unscaled, label="Predicted Load", marker='x', linewidth=2)
+            ax.set_title(f"24-Hour Load Forecast (Sample {sample_idx})")
             ax.set_xlabel("Hour")
             ax.set_ylabel("Load (MW)")
+            ax.grid(True, linestyle='--', alpha=0.7)
             ax.legend()
             st.pyplot(fig)
             
-        with col2:
-            st.markdown("#### Dynamic Expert Gating Weights")
+        with col_gating:
+            st.markdown("#### Expert Gating Weights")
             weights = w[sample_idx].numpy().flatten()
-            fig2, ax2 = plt.subplots(figsize=(8, 4))
+            fig2, ax2 = plt.subplots(figsize=(5, 5))
             experts = ["LSTM", "TCN", "CNN"]
-            ax2.bar(experts, weights, color=['#1f77b4', '#ff7f0e', '#2ca02c'])
+            bars = ax2.bar(experts, weights, color=['#1f77b4', '#ff7f0e', '#2ca02c'])
             ax2.set_title("Expert Contributions")
             ax2.set_ylabel("Weight")
             ax2.set_ylim(0, 1)
+            # Add numerical labels
+            for bar in bars:
+                yval = bar.get_height()
+                ax2.text(bar.get_x() + bar.get_width()/2, yval + 0.02, f"{yval:.2f}", ha='center', va='bottom')
             st.pyplot(fig2)
             
-        st.markdown("#### Context Features & Closed-Loop Feedback")
+        # ================= CONTEXT ANALYSIS =================
+        st.markdown("#### Context Analysis")
         context_vals = ctx[sample_idx].numpy().flatten()
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Trend Strength", f"{context_vals[0]:.4f}")
         c2.metric("Volatility Level", f"{context_vals[1]:.4f}")
         c3.metric("Periodicity", f"{context_vals[2]:.4f}")
         
-        # For error feedback, the model uses `prev_err` in its forward pass.
-        # We can calculate the mean of the absolute previous error used.
+        # Correct closed-loop error unscaling
         if sample_idx == 0:
-            prev_err_mae = 0.0
+            prev_err_unscaled_mae = 0.0
         else:
-            prev_err_unscaled = scaler.inverse_transform( (preds[sample_idx-1] - Y_test[sample_idx-1]).numpy().reshape(-1,1) )
-            prev_err_mae = np.mean(np.abs(prev_err_unscaled))
+            prev_err = (preds[sample_idx-1] - Y_test[sample_idx-1]).numpy().flatten()
+            # Error is a magnitude, not an absolute value to be offset by the mean.
+            # Convert scaled error magnitude to original MW magnitude using scaler.scale_
+            scale_factor = scaler.scale_[0]
+            prev_err_unscaled_mae = np.mean(np.abs(prev_err)) * scale_factor
             
-        c4.metric("Closed-Loop Feedback (Prev MAE)", f"{prev_err_mae:.2f} MW")
+        c4.metric("Closed-Loop Feedback (Prev MAE)", f"{prev_err_unscaled_mae:.2f} MW")
+        
+        # ================= FORECAST TABLE =================
+        with st.expander("View 24-Hour Tabular Data"):
+            error_unscaled = np.abs(pred_unscaled - actual_unscaled)
+            df_table = pd.DataFrame({
+                "Hour": range(24),
+                "Actual Load (MW)": actual_unscaled,
+                "Predicted Load (MW)": pred_unscaled,
+                "Absolute Error (MW)": error_unscaled
+            })
+            st.dataframe(df_table.style.format("{:.2f}"))
 
 else:
     st.warning("Could not load data or model. Please check the repository paths.")
+
+# ================= MODEL INFORMATION =================
+st.markdown("---")
+st.markdown("### Architecture Details")
+col_arch1, col_arch2 = st.columns(2)
+with col_arch1:
+    st.info("**LSTM Expert:** Long-term temporal dependencies")
+    st.info("**TCN Expert:** Multi-scale temporal patterns")
+    st.info("**CNN Expert:** Local patterns and sudden variations")
+with col_arch2:
+    st.info("**Context Encoder:** Trend, volatility, periodicity and feedback")
+    st.info("**Dynamic Expert Gating:** Adaptive expert combination")
+    st.info("**Closed-Loop Feedback:** Uses previous prediction error")
