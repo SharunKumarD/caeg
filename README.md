@@ -82,7 +82,6 @@ The models are evaluated across the 24-hour horizon using:
 * **MAE:** Mean Absolute Error
 * **RMSE:** Root Mean Squared Error
 * **R²:** Coefficient of Determination
-* **MAPE:** Mean Absolute Percentage Error (Used dynamically in visualization)
 
 ## 18. Final Research Results
 *Results on the Modern PJM Test Set (24-Hour Horizon):*
