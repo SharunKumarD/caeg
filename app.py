@@ -62,7 +62,15 @@ def run_full_inference(_model, X_test, Y_test):
         prev_err = torch.zeros(1, pred_len).to(device)
         
         for i in range(num_samples):
-            pred, w_i, ctx_i = _model(x[i:i+1], prev_err, return_context=True)
+            pred, w_i = _model(x[i:i+1], prev_err)
+            
+            # Manually calculate context features exactly as ContextEncoder does
+            trend = (x[i:i+1, -1, 0] - x[i:i+1, 0, 0]).unsqueeze(-1)
+            volatility = x[i:i+1, :, 0].std(dim=1).unsqueeze(-1)
+            lag = min(24, 168 // 2)
+            periodicity = torch.cosine_similarity(x[i:i+1, lag:, 0], x[i:i+1, :-lag, 0], dim=1, eps=1e-8).unsqueeze(-1)
+            recent_error = torch.tanh(prev_err.abs().mean(dim=1, keepdim=True))
+            ctx_i = torch.cat([trend, volatility, periodicity, recent_error], dim=1)
             preds_list.append(pred.cpu())
             w_list.append(w_i.cpu())
             ctx_list.append(ctx_i.cpu())
