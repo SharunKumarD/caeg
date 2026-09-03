@@ -136,7 +136,6 @@ def run_evaluation_on_dataset(ds_name, csv_path, weight_path, out_csv):
 
 def main():
     datasets = [
-        ("ELEC2", "data/dataset_elec2.csv", "caeg_net_elec2_best.pth", "benchmark_results_elec2.csv"),
         ("Modern PJM", "data/dataset_modern.csv", "caeg_net_modern_best.pth", "benchmark_results_modern.csv")
     ]
     

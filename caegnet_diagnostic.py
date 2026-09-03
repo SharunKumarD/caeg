@@ -80,7 +80,6 @@ def train_and_track(ds_name, csv_path, epochs=15, batch_size=32):
 def main():
     epochs = 15
     datasets = [
-        ("ELEC2", "data/dataset_elec2.csv"),
         ("Modern PJM", "data/dataset_modern.csv")
     ]
     
@@ -89,18 +88,18 @@ def main():
         t_losses, v_losses = train_and_track(ds_name, csv_path, epochs=epochs)
         all_results[ds_name] = (t_losses, v_losses)
         
-    print("\nGenerating side-by-side plot...")
-    fig, axs = plt.subplots(1, 2, figsize=(15, 6))
+    print("\nGenerating plot...")
+    fig, ax = plt.subplots(figsize=(8, 6))
     
-    for i, ds_name in enumerate(["ELEC2", "Modern PJM"]):
+    for ds_name in ["Modern PJM"]:
         t_losses, v_losses = all_results[ds_name]
-        axs[i].plot(range(1, epochs + 1), t_losses, label='Training Loss', marker='o', color='blue')
-        axs[i].plot(range(1, epochs + 1), v_losses, label='Validation Loss', marker='o', color='orange')
-        axs[i].set_title(f'CAEG-Net Convergence ({ds_name})')
-        axs[i].set_xlabel('Epochs')
-        axs[i].set_ylabel('Loss (MSE)')
-        axs[i].grid(True, linestyle='--', alpha=0.7)
-        axs[i].legend()
+        ax.plot(range(1, epochs + 1), t_losses, label='Training Loss', marker='o', color='blue')
+        ax.plot(range(1, epochs + 1), v_losses, label='Validation Loss', marker='o', color='orange')
+        ax.set_title(f'CAEG-Net Convergence ({ds_name})')
+        ax.set_xlabel('Epochs')
+        ax.set_ylabel('Loss (MSE)')
+        ax.grid(True, linestyle='--', alpha=0.7)
+        ax.legend()
         
     plt.tight_layout()
     out_path = 'caegnet_convergence.png'

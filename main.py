@@ -99,7 +99,6 @@ def train_caeg_net(epochs=15, batch_size=32, patience=10):
     print(f"Using device: {device}")
     
     datasets = [
-        ("ELEC2", "data/dataset_elec2.csv", "caeg_net_elec2_best.pth"),
         ("Modern PJM", "data/dataset_modern.csv", "caeg_net_modern_best.pth")
     ]
     
